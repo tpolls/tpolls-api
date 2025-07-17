@@ -1,0 +1,14 @@
+# Render Deployment Configuration
+services:
+  - type: web
+    name: tpolls-api
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: "*"
