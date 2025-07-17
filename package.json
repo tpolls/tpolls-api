@@ -20,6 +20,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@ton/core": "^0.56.3",
+    "@ton/crypto": "^3.3.0",
+    "@ton/ton": "^13.11.2",
     "axios": "^1.9.0",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
@@ -29,9 +32,6 @@
     "mongoose": "^8.0.3",
     "node-cron": "^4.1.0",
     "node-fetch": "^2.7.0",
-    "openai": "^5.0.1",
-    "@ton/core": "^0.56.0",
-    "@ton/ton": "^13.9.0",
-    "@ton/crypto": "^3.2.0"
+    "openai": "^5.0.1"
   }
 }
