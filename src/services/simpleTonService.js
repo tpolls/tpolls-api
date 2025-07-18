@@ -361,12 +361,12 @@ class SimpleTonService {
       
       // Try getTotalPolls method first
       try {
-        const result = await this.client.runMethod(contractAddress, 'getTotalPolls');
+        const result = await this.client.runMethod(contractAddress, 'getPollCount');
         if (result.stack && result.stack.items.length > 0) {
           return Number(result.stack.items[0].value);
         }
       } catch (error) {
-        console.log('getTotalPolls method failed, trying getPollCount');
+        console.log('getPollCount method failed, trying getPollCount');
       }
       
       // Fallback to getPollCount
