@@ -14,9 +14,8 @@ router.get('/status', blockchainController.getContractStatus);
 router.get('/sync-status', blockchainController.getSyncStatus);
 router.post('/sync', blockchainController.triggerSync);
 
-// Poll registration routes
-router.post('/polls/register', blockchainController.registerPollOnBlockchain);
-router.post('/polls/confirm-registration', blockchainController.confirmPollRegistration);
+// Poll routes (blockchain-first approach)
+router.post('/polls/store-metadata', blockchainController.storePollMetadata);
 router.get('/polls/active', blockchainController.getActivePolls);
 router.get('/polls/:pollId', blockchainController.getBlockchainPoll);
 router.get('/polls/:pollId/results', blockchainController.getPollResults);

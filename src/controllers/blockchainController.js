@@ -1,4 +1,4 @@
-const tonService = require('../services/tonService');
+const simpleTonService = require('../services/simpleTonService');
 const AiGeneratedPoll = require('../models/AiGeneratedPoll');
 const BlockchainPoll = require('../models/BlockchainPoll');
 const PollSync = require('../models/PollSync');
@@ -14,10 +14,10 @@ class BlockchainController {
    */
   async initializeTonService(req, res) {
     try {
-      const success = await tonService.init();
+      const success = await simpleTonService.init();
       
       if (success) {
-        const status = await tonService.getContractStatus();
+        const status = await simpleTonService.getContractStatus();
         res.json({
           success: true,
           message: 'TON service initialized successfully',
@@ -44,7 +44,7 @@ class BlockchainController {
    */
   async getContractStatus(req, res) {
     try {
-      const status = await tonService.getContractStatus();
+      const status = await simpleTonService.getContractStatus();
       res.json({
         success: true,
         status
@@ -60,137 +60,83 @@ class BlockchainController {
   }
 
   /**
-   * Register an AI-generated poll on the blockchain
+   * Store poll metadata after blockchain creation
    */
-  async registerPollOnBlockchain(req, res) {
+  async storePollMetadata(req, res) {
     try {
-      const { aiPollId } = req.body;
+      const { 
+        blockchainPollId, 
+        transactionHash, 
+        contractAddress, 
+        aiData, 
+        pollData, 
+        createdBy 
+      } = req.body;
       
-      if (!aiPollId) {
+      if (!blockchainPollId || !transactionHash || !pollData) {
         return res.status(400).json({
           success: false,
-          message: 'AI poll ID is required'
+          message: 'Blockchain poll ID, transaction hash, and poll data are required'
         });
       }
 
-      // Find the AI-generated poll
-      const aiPoll = await AiGeneratedPoll.findById(aiPollId);
-      if (!aiPoll) {
-        return res.status(404).json({
-          success: false,
-          message: 'AI poll not found'
-        });
-      }
-
-      // Check if already registered or in progress
-      const existingSync = await PollSync.findByAiPoll(aiPollId);
-      if (existingSync && existingSync.syncStatus !== 'failed') {
-        return res.status(400).json({
-          success: false,
-          message: 'Poll is already registered or registration is in progress',
-          syncStatus: existingSync.syncStatus
-        });
-      }
-
-      // Prepare poll data for blockchain
-      const pollData = {
-        title: aiPoll.subject,
-        description: aiPoll.description,
-        options: aiPoll.options,
-        duration: aiPoll.duration * 3600, // Convert hours to seconds
-        rewardPerVote: aiPoll.rewardPerVote || '0.01',
-        totalFunding: aiPoll.totalFunding || '1.0'
-      };
-
-      // Create registration transaction payload
-      const registrationResult = await tonService.registerPoll(pollData);
-      
-      // Create or update sync record
-      let pollSync;
-      if (existingSync) {
-        pollSync = existingSync;
-        pollSync.resetForRetry();
-      } else {
-        pollSync = new PollSync({
-          aiPollId,
-          createdBy: req.body.userId || 'api',
-          metadata: {
-            userAgent: req.get('User-Agent'),
-            ipAddress: req.ip,
-            requestId: req.id
-          }
-        });
-      }
-
-      pollSync.markRegistering(registrationResult.payload, registrationResult.contractAddress);
-      await pollSync.save();
-
-      res.json({
-        success: true,
-        message: 'Poll registration payload created',
-        syncId: pollSync._id,
-        transactionData: {
-          contractAddress: registrationResult.contractAddress,
-          amount: registrationResult.amount,
-          payload: registrationResult.payload
-        },
-        pollData: registrationResult.pollData
-      });
-
-    } catch (error) {
-      console.error('Error registering poll on blockchain:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Failed to register poll on blockchain',
-        error: error.message
-      });
-    }
-  }
-
-  /**
-   * Confirm poll registration after transaction is sent
-   */
-  async confirmPollRegistration(req, res) {
-    try {
-      const { syncId, txHash, blockchainPollId } = req.body;
-      
-      if (!syncId || !txHash) {
-        return res.status(400).json({
-          success: false,
-          message: 'Sync ID and transaction hash are required'
-        });
-      }
-
-      const pollSync = await PollSync.findById(syncId);
-      if (!pollSync) {
-        return res.status(404).json({
-          success: false,
-          message: 'Poll sync record not found'
-        });
-      }
-
-      // Update sync record with transaction info
-      pollSync.markRegistered(blockchainPollId, txHash);
-      await pollSync.save();
-
-      // Update AI poll with blockchain reference
-      await AiGeneratedPoll.findByIdAndUpdate(pollSync.aiPollId, {
+      // Create blockchain poll record
+      const blockchainPoll = new BlockchainPoll({
         blockchainPollId,
-        status: 'registered'
+        contractAddress,
+        registrationTxHash: transactionHash,
+        creator: createdBy,
+        optionCount: pollData.options?.length || 0,
+        startTime: new Date(),
+        endTime: new Date(Date.now() + (pollData.duration || 86400) * 1000),
+        isActive: true,
+        totalVotes: 0,
+        rewardPerVote: parseFloat(pollData.rewardPerVote || '0.01') * 1000000000, // Convert to nanoTON
+        totalFunding: pollData.totalFunding || '1.0',
+        syncStatus: 'synced'
       });
+
+      await blockchainPoll.save();
+
+      // If AI data is provided, create a connection record
+      let aiPollRecord = null;
+      if (aiData) {
+        try {
+          aiPollRecord = new AiGeneratedPoll({
+            subject: aiData.subject,
+            description: aiData.description,
+            category: aiData.category || 'other',
+            options: aiData.options,
+            rewardPerResponse: aiData.rewardPerResponse,
+            durationDays: aiData.durationDays,
+            maxResponses: aiData.maxResponses,
+            targetFund: aiData.targetFund,
+            fundingType: aiData.fundingType || 'self-funded',
+            rewardDistribution: aiData.rewardDistribution || 'fixed',
+            originalPrompt: aiData.originalPrompt || 'Created via blockchain',
+            blockchainPollId: blockchainPollId,
+            status: 'registered'
+          });
+
+          await aiPollRecord.save();
+        } catch (aiError) {
+          console.warn('Failed to save AI poll record:', aiError);
+        }
+      }
 
       res.json({
         success: true,
-        message: 'Poll registration confirmed',
-        syncStatus: pollSync.syncStatus,
+        message: 'Poll metadata stored successfully',
+        blockchainPoll: blockchainPoll._id,
+        aiPoll: aiPollRecord?._id,
         blockchainPollId
       });
 
     } catch (error) {
-      console.error('Error confirming poll registration:', error);
+      console.error('Error storing poll metadata:', error);
       res.status(500).json({
         success: false,
-        message: 'Failed to confirm poll registration',
+        message: 'Failed to store poll metadata',
         error: error.message
       });
     }
@@ -217,20 +163,20 @@ class BlockchainController {
       
       // If not in database, fetch from blockchain
       if (!blockchainPoll) {
-        const pollData = await tonService.getPollFromBlockchain(blockchainPollId);
+        const pollData = await simpleTonService.getPoll(blockchainPollId);
         
         // Save to database for caching
         blockchainPoll = new BlockchainPoll({
           blockchainPollId,
-          contractAddress: tonService.contractAddress,
+          contractAddress: simpleTonService.contractAddress,
           creator: pollData.creator,
           optionCount: pollData.optionCount,
-          startTime: new Date(pollData.startTime * 1000),
-          endTime: new Date(pollData.endTime * 1000),
+          startTime: new Date(),
+          endTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days default
           isActive: pollData.isActive,
           totalVotes: pollData.totalVotes,
-          rewardPerVote: pollData.rewardPerVote,
-          totalFunding: pollData.fundData?.totalFunds || '0.000 TON'
+          rewardPerVote: 0,
+          totalFunding: '0.000 TON'
         });
         
         await blockchainPoll.save();
@@ -272,11 +218,12 @@ class BlockchainController {
 
       if (source === 'blockchain' || source === 'both') {
         // Get polls from blockchain
-        const blockchainPolls = await tonService.getActivePolls();
+        const blockchainPolls = await simpleTonService.getActivePolls();
+        console.log('blockchainPolls', blockchainPolls)
         
         // Enhance with AI data where available
         for (const blockchainPoll of blockchainPolls) {
-          const pollSync = await PollSync.findByBlockchainPoll(blockchainPoll.blockchainPollId);
+          const pollSync = await PollSync.findByBlockchainPoll(blockchainPoll.id);
           let aiPollData = null;
           
           if (pollSync) {
@@ -285,7 +232,7 @@ class BlockchainController {
 
           polls.push({
             type: 'blockchain',
-            id: blockchainPoll.blockchainPollId,
+            id: blockchainPoll.id,
             blockchainData: blockchainPoll,
             aiData: aiPollData,
             syncInfo: pollSync
@@ -329,7 +276,7 @@ class BlockchainController {
   }
 
   /**
-   * Create vote transaction payload
+   * Create vote transaction payload (simplified for blockchain poll IDs)
    */
   async createVoteTransaction(req, res) {
     try {
@@ -342,8 +289,17 @@ class BlockchainController {
         });
       }
 
-      // Check if user has already voted
-      const existingVote = await BlockchainVote.hasUserVoted(voterAddress, pollId);
+      // Validate that pollId is a number (blockchain poll ID)
+      const blockchainPollId = parseInt(pollId);
+      if (isNaN(blockchainPollId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid poll ID: must be a numeric blockchain poll ID'
+        });
+      }
+
+      // Check if user has already voted on this poll
+      const existingVote = await BlockchainVote.hasUserVoted(voterAddress, blockchainPollId);
       if (existingVote) {
         return res.status(400).json({
           success: false,
@@ -352,13 +308,13 @@ class BlockchainController {
       }
 
       // Create vote transaction payload
-      const voteTransaction = await tonService.createVoteTransaction(pollId, optionId);
+      const voteTransaction = await simpleTonService.createVoteTransaction(blockchainPollId, optionId);
       
       // Create vote record
-      const voteId = `${pollId}_${voterAddress}_${Date.now()}`;
+      const voteId = `${blockchainPollId}_${voterAddress}_${Date.now()}`;
       const blockchainVote = new BlockchainVote({
         voteId,
-        blockchainPollId: pollId,
+        blockchainPollId,
         voterAddress,
         selectedOptionId: optionId,
         status: 'pending',
@@ -375,11 +331,7 @@ class BlockchainController {
         success: true,
         message: 'Vote transaction created',
         voteId: blockchainVote.voteId,
-        transactionData: {
-          contractAddress: voteTransaction.contractAddress,
-          amount: voteTransaction.amount,
-          payload: voteTransaction.payload
-        }
+        transactionData: voteTransaction
       });
 
     } catch (error) {

@@ -11,7 +11,7 @@ module.exports = {
     network: process.env.TON_NETWORK || 'testnet',
     endpoint: process.env.TONCENTER_ENDPOINT || 'https://testnet.toncenter.com/api/v2/jsonRPC',
     apiKey: process.env.TONCENTER_API_KEY,
-    contractAddress: process.env.TPOLLS_CONTRACT_ADDRESS || 'EQD33qSiwBmeW455-zQsrxdHUlpiuO3pnkO0SzBCjPAFvOAe'
+    contractAddress: process.env.TPOLLS_CONTRACT_ADDRESS || 'EQALr5-FARSMfmifCqViREbvSGpQnz9I4-ld9OUM8Tj2Qn7B'
   },
   
   // Blockchain Sync Configuration
