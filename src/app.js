@@ -3,8 +3,8 @@ const cors = require('cors');
 const config = require('./config/config');
 const pollRoutes = require('./routes/pollRoutes');
 const blockchainRoutes = require('./routes/blockchainRoutes');
-const tonService = require('./services/tonService');
-const syncService = require('./services/blockchainSyncService');
+const simpleBlockchainRoutes = require('./routes/simpleBlockchainRoutes');
+const simpleTonService = require('./services/simpleTonService');
 
 // Initialize Express app
 const app = express();
@@ -17,36 +17,32 @@ app.use(cors({
   credentials: true
 }));
 
-// Initialize services on startup
-tonService.init().then((success) => {
+// Initialize simplified TON service
+simpleTonService.init().then((success) => {
   if (success) {
-    console.log('TON service initialized successfully');
-    
-    // Start blockchain sync service after TON service is ready
-    syncService.start();
+    console.log('Simple TON service initialized successfully');
   } else {
-    console.warn('TON service initialization failed - running in fallback mode');
+    console.warn('Simple TON service initialization failed');
   }
 }).catch((error) => {
-  console.error('TON service initialization error:', error);
+  console.error('Simple TON service initialization error:', error);
 });
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully');
-  syncService.stop();
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
   console.log('SIGINT received, shutting down gracefully');
-  syncService.stop();
   process.exit(0);
 });
 
 // Routes
 app.use('/api', pollRoutes);
 app.use('/api/blockchain', blockchainRoutes);
+app.use('/api/simple-blockchain', simpleBlockchainRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
